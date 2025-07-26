@@ -1,12 +1,14 @@
 library(data.table)
 source("R/get-utla-codes.R")
 
-process_ost_epd_data <- function(ost_file = "data/OST-may-2025.csv",
-                                 postcode_file = "data/ONS-postcodes-lookup.csv",
-                                 output_file = "data/EPD-OST-UTLA-cost.csv") {
-  
+process_ost_epd_data <- function(
+  ost_file = "data/OST-may-2025.csv",
+  postcode_file = "data/ONS-postcodes-lookup.csv",
+  output_file = "data/EPD-OST-UTLA-cost.csv"
+) {
+
   dt <- data.table::fread(ost_file)
-  
+
   dt <-
     dt[, .(
       YEAR_MONTH,
@@ -22,27 +24,29 @@ process_ost_epd_data <- function(ost_file = "data/OST-may-2025.csv",
       QUANTITY,
       TOTAL_QUANTITY
     )]
-  
+
+  dt <- dt[nchar(POSTCODE) > 5, ]
+
   postcode_lkp <-
     data.table::fread(postcode_file)
-  
-  # Set keys for efficient joins
+
+
   data.table::setkey(dt, POSTCODE)
   data.table::setkey(postcode_lkp, pcd2)
-  
-  # Use data.table join syntax for better performance
-  dt <- postcode_lkp[dt, on = .(pcd2 = POSTCODE)]
-  
+
+
+  dt <- dt[postcode_lkp, on = .(POSTCODE = pcd2)]
+
   utla_codes <- get_utla_codes()
   data.table::setkey(dt, utla)
   data.table::setkey(utla_codes, utlacd)
-  
-  dt <- utla_codes[dt, on = .(utlacd = utla)]
-  
+
+  dt <- dt[utla_codes, on = .(utla = utlacd)]
+
   dt <-
     dt[, .(
       YEAR_MONTH,
-      utla = utlacd,
+      utla,
       utlanm,
       CHEMICAL_SUBSTANCE_BNF_DESCR,
       BNF_DESCRIPTION,
@@ -52,7 +56,7 @@ process_ost_epd_data <- function(ost_file = "data/OST-may-2025.csv",
       TOTAL_QUANTITY,
       TOTAL_COST = ITEMS * ACTUAL_COST
     )]
-  
+
   dt[, submod := data.table::fcase(
     CHEMICAL_SUBSTANCE_BNF_DESCR == "Methadone hydrochloride",
     "Methadone",
@@ -69,11 +73,11 @@ process_ost_epd_data <- function(ost_file = "data/OST-may-2025.csv",
     ),
     "Depot buprenorphine"
   )]
-  
+
   dt <-
     dt[, lapply(.SD, sum), by = .(utla, utlanm, submod), .SDcols = "TOTAL_COST"]
-  
+
   data.table::fwrite(dt, output_file)
-  
-  return(dt)
+
+  dt
 }
